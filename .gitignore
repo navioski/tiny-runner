@@ -1,0 +1,22 @@
+# 虚拟环境：机器相关，且 bin 里的 shebang 是绝对路径，不能进仓库
+.venv/
+
+# pyxel 官方示例：用 `pyxel copy_examples` 随时重建
+pyxel_examples/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 运行产物
+*.log
+demo.log
+
+# 构建产物（exe/html 由 GitHub Actions 生成，不进仓库）
+dist/
+build/
+*.pyxapp
+*.spec
+
+# macOS 垃圾文件
+.DS_Store

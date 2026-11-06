@@ -1,0 +1,87 @@
+name: build-windows-exe
+
+# Manual dispatch, or automatically when tiny_runner.py changes
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tiny_runner.py"
+      - ".github/workflows/build.yml"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pyxel + pyinstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyxel pyinstaller
+          python -c "import pyxel, PyInstaller; print('pyxel', pyxel.VERSION)"
+
+      # 1) Pack the game into a .pyxapp (Pyxel's own format — a zip underneath)
+      - name: Package pyxapp
+        run: |
+          New-Item -ItemType Directory -Force dist_src | Out-Null
+          Copy-Item tiny_runner.py dist_src\tiny_runner.py
+          pyxel package dist_src dist_src/tiny_runner.py
+          Get-ChildItem *.pyxapp
+
+      # 2) A tiny bootstrap script: PyInstaller's entry point
+      - name: Write bootstrap
+        shell: python
+        run: |
+          from pathlib import Path
+          Path("boot.py").write_text(
+              "import pyxel.cli\n"
+              "from pathlib import Path\n"
+              "pyxel.cli.play_pyxel_app(\n"
+              "    str(Path(__file__).parent / 'dist_src.pyxapp'))\n",
+              encoding="utf-8",
+          )
+
+      # 3) Build a single-file exe (--onefile: the player gets one file, double-click to play)
+      - name: Build onefile exe
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed `
+            --name TinyRunner `
+            --add-data "dist_src.pyxapp;." `
+            --exclude-module tkinter `
+            boot.py
+
+      # 4) Verify the artifact really is a Windows executable
+      - name: Verify PE header
+        shell: python
+        run: |
+          import pathlib, sys
+          exe = pathlib.Path("dist/TinyRunner.exe")
+          assert exe.is_file(), "exe not found"
+          head = exe.read_bytes()[:2]
+          print("size:", exe.stat().st_size // 1024, "KB")
+          print("magic:", head)
+          sys.exit(0 if head == b"MZ" else 1)
+
+      # 5) Actually run it: launch the exe, wait 10 s, see whether it dies on its own
+      - name: Smoke run 10s
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\TinyRunner.exe -PassThru
+          Start-Sleep -Seconds 10
+          if ($p.HasExited) {
+            Write-Error "exe exited early, code=$($p.ExitCode)"
+            exit 1
+          }
+          Write-Host "still alive after 10s -> OK"
+          Stop-Process -Id $p.Id -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TinyRunner-windows
+          path: dist/TinyRunner.exe
+          if-no-files-found: error

@@ -1,0 +1,3 @@
+# TINY RUNNER — runtime dependency
+# The game is a single file; everything else is the standard library.
+pyxel==2.9.9
